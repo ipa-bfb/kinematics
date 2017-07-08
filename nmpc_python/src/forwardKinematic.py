@@ -51,11 +51,11 @@ class KinematicChain(object):
         #print "kin_tree_:",self.kin_chain
 
         #print "joints: ", self.joints_name_
-        print "links: ", self.links_name_
+        #print "links: ", self.links_name_
         #print "joint_type: ", self.joints_type_
         #print "compute_transformation_between_joint: ", self.compute_transformation_between_joint("arm_wrist_1_joint", "arm_wrist_3_joint")
 
-        print self.forward_kinematics("arm_wrist_3_link", "arm_wrist_2_link")
+        #print self.forward_kinematics("arm_wrist_3_link", "arm_wrist_2_link")
         #print self.forward_kinematics()
 
     ##
@@ -66,8 +66,8 @@ class KinematicChain(object):
     # @return List of joint type in the urdf_model (kinematic_chain)
     def get_joints_type(self, links=False, fixed=False):
         joints_type = []
-        model_description = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=links, fixed=fixed)
-        for it in model_description:
+        joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=links, fixed=fixed)
+        for it in joint_names:
             joint = self.urdf_model_.joint_map[it]
             joints_type.append(joint.type)
 
@@ -84,8 +84,8 @@ class KinematicChain(object):
     # @param Name of joint of which transformation needed
     # @return 4x4 homogeneous transformation
     def create_homo_matrix(self, joint_name):
-        model_description = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
-        for it in model_description:
+        joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
+        for it in joint_names:
             joint = self.urdf_model_.joint_map[it]
             if joint.name == joint_name:
                 angle =  joint.origin.rpy
@@ -172,8 +172,29 @@ class KinematicChain(object):
             q_kdl[i] = q_i
         return q_kdl
 
+    ##
+    # Write in the list form
+    def write_to_list(self):
+        joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
+        list_fk = []
+
+        for it in joint_names:
+            joint = self.urdf_model_.joint_map[it]
+            trans = self.forward_kinematics(joint.child, joint.parent)
+            trans_wrt_origin = self.forward_kinematics(end_link=joint.child)
+            list_fk.append((joint.name, trans, trans_wrt_origin))
+
+        return list_fk
 
 if __name__ == '__main__':
+
+    rospy.init_node('Forward_kinematics', anonymous=True)
     create_kinematic_chain_from_robot_description()
-    #robot = Robot.from_parameter_server()
-   # kdl_chanin = KinematicChain(robot)
+    if not rospy.is_shutdown():
+        robot = Robot.from_parameter_server()
+        kdl_chanin = KinematicChain(robot)
+        list_fk = kdl_chanin.write_to_list()
+        print "joint_0: ",list_fk[0]
+
+    else:
+        rospy.logerr("Try to connect ROS")
