@@ -41,6 +41,7 @@ class KinematicChain(object):
         self.links_name_ = self.get_links_name()
         self.num_joints_ = len(self.joints_name_)
         self.forward_kin_ = kdl.ChainFkSolverPos_recursive(self.kin_chain_)
+        self.jacobi_ = kdl.ChainJntToJacSolver(self.kin_chain_)
 
         self.joint_states = [0., 0., 0., 0., 0., 0.];
         rospy.Subscriber("/arm/joint_states", JointState, self.jointStateCallback)
@@ -111,8 +112,8 @@ class KinematicChain(object):
     # @param end_link Name of the link the pose should be obtained for.
     # @param base_link Name of the root link frame the end_link should be found in.
     # @return 4x4 numpy.mat homogeneous transformation
-    def forward_kinematics(self, end_link=None, base_link=None):
-        q = self.get_joint_angle()
+    def forward_kinematics(self,q, end_link=None, base_link=None):
+        #q = self.get_joint_angle()
 
         link_names = self.links_name_
         if end_link is None:
@@ -174,17 +175,44 @@ class KinematicChain(object):
 
     ##
     # Write in the list form
-    def write_to_list(self):
+    def write_to_list(self, q):
         joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
         list_fk = []
 
         for it in joint_names:
             joint = self.urdf_model_.joint_map[it]
-            trans = self.forward_kinematics(joint.child, joint.parent)
-            trans_wrt_origin = self.forward_kinematics(end_link=joint.child)
+            trans = self.forward_kinematics(q, joint.child, joint.parent)
+            trans_wrt_origin = self.forward_kinematics(q, end_link=joint.child)
             list_fk.append((joint.name, trans, trans_wrt_origin))
 
         return list_fk
+
+    def compute_linear_Jacobian(self, list_fk):
+        lin_jacobi = []
+        for i in range (0, len(list_fk)):
+            info_joint = list_fk[i]
+            info_end_joint = list_fk[len(list_fk)-1]
+            mat_wrt_ori = info_joint[2]
+            end_mat_wrt_ori = info_end_joint[2]
+            z = np.squeeze(np.asarray(mat_wrt_ori[:3,2]))
+            Oi = mat_wrt_ori[:3,3]
+            On = end_mat_wrt_ori[:3,3]
+            diff = np.squeeze(np.asarray(On - Oi))
+            print np.cross(z, diff)
+#            print lin_jacobi
+
+    def jacobi_calculation(self, q, pose=None):
+
+        j_kdl = kdl.Jacobian(self.num_joints_)
+        q_kdl = self.create_joint_list(q)
+        self.jacobi_.JntToJac(q_kdl, j_kdl)
+        if pose is not None:
+            ee_pose = self.forward_kinematics(q)[:3,3]
+            pos_kdl = kdl.Vector(pose[0] - ee_pose[0], pose[1] - ee_pose[1], pose[2] - ee_pose[2])
+            j_kdl.changeRefPoint(pos_kdl)
+        return j_kdl
+
+
 
 if __name__ == '__main__':
 
@@ -192,9 +220,15 @@ if __name__ == '__main__':
     create_kinematic_chain_from_robot_description()
     if not rospy.is_shutdown():
         robot = Robot.from_parameter_server()
-        kdl_chanin = KinematicChain(robot)
-        list_fk = kdl_chanin.write_to_list()
-        print "joint_0: ",list_fk[0]
+        kdl_chain = KinematicChain(robot)
+        q = kdl_chain.get_joint_angle()
+        pose = kdl_chain.forward_kinematics(q)
+        print pose
+        #list_fk = kdl_chain.write_to_list(q)
+        #print "joint_0: ",list_fk[5]
+        #kdl_chain.compute_linear_Jacobian(list_fk)
+
+        #print kdl_chain.jacobi_calculation(q)
 
     else:
         rospy.logerr("Try to connect ROS")
