@@ -167,7 +167,7 @@ class KDLKinematics(object):
         else:
             end_link = None
         homo_mat = self.forward(q, end_link)
-        pos = tf.transformations.translation_from_matrix(homo_mat)
+        pos = tf.transformations.translation_from_matrix(f)
         quat = tf.transformations.quaternion_from_matrix(homo_mat)
         euler = tf.transformations.euler_from_matrix(homo_mat)
         return pos, quat, euler
@@ -201,6 +201,8 @@ class KDLKinematics(object):
                 print "Base segment %s not in KDL chain" % base_link
                 return None
         base_trans = self._do_kdl_fk(q, base_link)
+	
+	print "base_trans: ", base_trans
         if base_trans is None:
             print "FK KDL failure on base transformation."
         end_trans = self._do_kdl_fk(q, end_link)
@@ -434,6 +436,7 @@ def joint_list_to_kdl(q):
     q_kdl = kdl.JntArray(len(q))
     for i, q_i in enumerate(q):
         q_kdl[i] = q_i
+    print q_kdl
     return q_kdl
 
 def main():
@@ -465,7 +468,7 @@ def main():
         kdl_kin = KDLKinematics(robot, base_link, end_link)
         q = kdl_kin.random_joint_angles()
         print "Random angles:", q
-        pose = kdl_kin.forward(q)
+        pose = kdl_kin.forward(q, "arm_shoulder_pan_link")
         print "FK:", pose
         q_new = kdl_kin.inverse(pose)
         print "IK (not necessarily the same):", q_new

@@ -23,7 +23,7 @@ class KinematicChain(object):
     def __init__(self):
         rospy.loginfo("KinematicChain: create default constructor")
 
-    def __init__(self, urdf, base_link="base_link", end_link="gripper"):
+    def __init__(self, urdf, base_link="arm_base_link", end_link="arm_wrist_3_link"):
         [tree_ok, robot_tree_] = treeFromUrdfModel(urdf)
 
         if not tree_ok:
@@ -150,7 +150,7 @@ class KinematicChain(object):
     # @return 4x4 homogeneous transformation
     def _do_kdl_fk(self, q, joint_number):
         endeffec_frame = kdl.Frame()
-        kinematics_status = self.forward_kin_.JntToCart(self.create_joint_list(q),endeffec_frame, joint_number)
+        kinematics_status = self.forward_kin_.JntToCart(self.create_joint_list(q),endeffec_frame ,joint_number)
         if kinematics_status >= 0:
             p = endeffec_frame.p
             M = endeffec_frame.M
@@ -178,12 +178,13 @@ class KinematicChain(object):
     def write_to_list(self, q):
         joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
         list_fk = []
+        print joint_names
 
         for it in joint_names:
             joint = self.urdf_model_.joint_map[it]
             trans = self.forward_kinematics(q, joint.child, joint.parent)
             trans_wrt_origin = self.forward_kinematics(q, end_link=joint.child)
-            list_fk.append((joint.name, trans, trans_wrt_origin))
+            list_fk.append((joint.name, joint.type, trans, trans_wrt_origin))
 
         return list_fk
 
@@ -201,6 +202,70 @@ class KinematicChain(object):
             print np.cross(z, diff)
 #            print lin_jacobi
 
+
+    def compute_jacobian(self, q):
+        joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
+        list_fk = []
+        end_joint_name = joint_names[self.num_joints_-1]    # get child link name of end_link
+        joint_end = self.urdf_model_.joint_map[end_joint_name]
+        joint_start = self.urdf_model_.joint_map[joint_names[0]]
+        i = 0
+
+        for it in joint_names:
+            joint = self.urdf_model_.joint_map[it]
+
+            if i is not 0:
+
+                #if joint.type is 'fixed':
+                #    rospy.loginfo("Type of joint is fixed")
+                #    continue
+
+                #elif joint.type is 'revolute':
+                #rospy.loginfo("Type of joint is revolute")
+                z_i = np.squeeze(np.asarray( self.forward_kinematics(q, joint.child, joint_start.parent)[:3,2]))
+                o_i = np.squeeze(np.asarray(self.forward_kinematics(q, joint.child, joint_start.parent)[:3, 3]))
+                o_n = np.squeeze(np.asarray( self.forward_kinematics(q, joint_end.child, joint_start.parent)[:3, 3] ))
+                print "child: ", joint.child
+                print "joint_end_child: ", joint_end.child
+                print "joint_start_parent: ", joint_start.parent
+                print o_i
+                print "z_i: ", z_i
+                print "diff: ",np.cross(z_i, o_n-o_i)
+
+                #else:
+                #    rospy.loginfo("Type of joint is other")
+
+            else:
+                z0 = [0.0, 0.0, 1.0]
+                #z0 = np.squeeze(np.asarray( self.forward_kinematics(q, joint.child, joint.parent)[:3,2]))
+                o_i = np.squeeze(np.asarray(self.forward_kinematics(q, joint.child, joint_start.parent)[:3, 3]))
+                o_n = np.squeeze(np.asarray(self.forward_kinematics(q, joint_end.child, joint_start.parent)[:3, 3]))
+                print z0
+                print o_n
+                print o_i
+                print o_n - o_i
+                print "diff0: ", np.cross(z0, o_n - o_i)
+
+            i = i + 1
+
+    def jacobi(self, q, pose=None):
+        joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
+        joint_end = self.urdf_model_.joint_map[joint_names[self.num_joints_-1]] # get child link name of end_link
+
+        for it in joint_names:
+            joint = self.urdf_model_.joint_map[it]
+
+            z_i = np.squeeze(np.asarray( self.forward_kinematics(q, joint.child, joint.parent)[:3,2]))
+            theta_i = np.squeeze(np.asarray(self.forward_kinematics(q, joint.child, joint.parent)[:3, 3]))
+            #theta_n = np.squeeze(np.asarray( self.forward_kinematics(q, joint_end.child, joint.parent)[:3, 3] ))
+            theta_n = np.squeeze(np.asarray(pose[:3,3]))
+            print "z_i: ",z_i
+            #print "theta_i: ",theta_i
+            #print "theta_n: ",theta_n
+            print "diff: ",np.cross(z_i, theta_n-theta_i)
+
+
+
     def jacobi_calculation(self, q, pose=None):
 
         j_kdl = kdl.Jacobian(self.num_joints_)
@@ -217,18 +282,24 @@ class KinematicChain(object):
 if __name__ == '__main__':
 
     rospy.init_node('Forward_kinematics', anonymous=True)
-    create_kinematic_chain_from_robot_description()
+    #create_kinematic_chain_from_robot_description()
     if not rospy.is_shutdown():
         robot = Robot.from_parameter_server()
         kdl_chain = KinematicChain(robot)
-        q = kdl_chain.get_joint_angle()
-        pose = kdl_chain.forward_kinematics(q)
-        print pose
+        #q = kdl_chain.get_joint_angle()
+        q = [0., 0., 0., 0., 0., 0.]
+        #pose = kdl_chain.forward_kinematics(q, 'arm_wrist_3_link', 'arm_forearm_link')
+        #print "pose: ", pose
+        pose1 = kdl_chain.create_homo_matrix('arm_wrist_3_joint')
+        pose2 = kdl_chain.create_homo_matrix('arm_wrist_2_joint')
+        pose3 = kdl_chain.create_homo_matrix('arm_wrist_1_joint')
+        pose_f = np.dot(pose3, pose2)
+        print np.dot(pose_f, pose1)
         #list_fk = kdl_chain.write_to_list(q)
-        #print "joint_0: ",list_fk[5]
-        #kdl_chain.compute_linear_Jacobian(list_fk)
+        #pose = list_fk[5]
+        #print pose[2]
 
-        #print kdl_chain.jacobi_calculation(q)
-
+        #kdl_chain.compute_jacobian(q)
+        #print kdl_chain.jacobi(q, pose)
     else:
         rospy.logerr("Try to connect ROS")

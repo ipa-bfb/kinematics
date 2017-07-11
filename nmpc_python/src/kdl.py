@@ -57,7 +57,7 @@ class KDLKinematics(object):
         self.joint_safety_lower = []
         self.joint_safety_upper = []
         self.joint_types = []
-        self.joint_states = [0., 0., 0., 0., 0., 0.];
+        self.joint_states = [0., 0., 0., 0., 0., 0.]
         rospy.Subscriber("/arm/joint_states", JointState, self.jointStateCallback)
 
         for jnt_name in self.get_joint_names():
@@ -329,15 +329,17 @@ if __name__ == "__main__":
 
     rospy.init_node("kdl_kinematics")
     if not rospy.is_shutdown():
-        create_kdl_kin("base_link", "arm_wrist_3_link")
+        create_kdl_kin("arm_base_link", "arm_wrist_3_link")
         robot = Robot.from_parameter_server()
-        kdl_kin = KDLKinematics(robot, "base_link", "arm_wrist_3_link")
+        kdl_kin = KDLKinematics(robot, "arm_base_link", "arm_wrist_3_link")
         #q = kdl_kin.random_joint_angles()
-        q = kdl_kin.get_joint_angle()
-        #pose = kdl_kin.forward(q, "arm_wrist_3_link", "arm_wrist_2_link")
-        pose = kdl_kin.forward(q)
+        q = [0., 0., 0., 0., 0., 0.]
+
+        pose = kdl_kin.forward(q, "arm_wrist_3_link", "arm_base_link")
+        #pose = kdl_kin.forward(q)
         print pose
-        kdl_kin.jacobian(q)
+        #print kdl_kin.jacobian(q, pose[:3,3])
+        #kdl_kin.jacobian(q)
 
     else:
         rospy.logerr("Try to again connect ROS")
