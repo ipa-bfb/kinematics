@@ -211,6 +211,7 @@ class KDLKinematics(object):
         j_kdl = kdl.Jacobian(self.num_joints)
         q_kdl = joint_list_to_kdl(q)
         self._jac_kdl.JntToJac(q_kdl, j_kdl)
+        print j_kdl
         if pos is not None:
             ee_pos = self.forward(q)[:3,3]
             pos_kdl = kdl.Vector(pos[0]-ee_pos[0], pos[1]-ee_pos[1],
@@ -335,11 +336,18 @@ if __name__ == "__main__":
         #q = kdl_kin.random_joint_angles()
         q = [0., 0., 0., 0., 0., 0.]
 
-        pose = kdl_kin.forward(q, "arm_wrist_3_link", "arm_base_link")
-        #pose = kdl_kin.forward(q)
+        #print kdl_kin.forward(q, "arm_wrist_3_link", "arm_base_link")   # arm_wrist_3_joint
+        #print kdl_kin.forward(q, "arm_wrist_2_link", "arm_base_link")  # arm_wrist_2_joint
+        #print kdl_kin.forward(q, "arm_wrist_1_link", "arm_base_link")  # arm_wrist_1_link
+        #print kdl_kin.forward(q, "arm_forearm_link", "arm_base_link")  # arm_ee_joint
+        #print kdl_kin.forward(q, "arm_upper_arm_link", "arm_base_link")    # arm_lift_joint
+        #print kdl_kin.forward(q, "arm_shoulder_link", "arm_base_link")  # arm_pan_joint
+
+        pose = kdl_kin.forward(q)
         print pose
         #print kdl_kin.jacobian(q, pose[:3,3])
-        #kdl_kin.jacobian(q)
+        #pose1 = kdl_kin.jacobian(q)
+       # print pose1
 
     else:
         rospy.logerr("Try to again connect ROS")
