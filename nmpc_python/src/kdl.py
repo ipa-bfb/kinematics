@@ -8,7 +8,9 @@ import rospy
 from sensor_msgs.msg import JointState
 from kdl_parser_py.urdf import treeFromUrdfModel
 from urdf_parser_py.urdf import Robot
-import tf.transformations
+import tf
+
+pi = 3.1415
 
 def create_kdl_kin(base_link, end_link, urdf_filename=None, description_param="/robot_description"):
     if urdf_filename is None:
@@ -185,6 +187,98 @@ class KDLKinematics(object):
             print "FK KDL failure on end transformation."
         return base_trans**-1 * end_trans
 
+    def forward2(self, q, end_link=None, base_link=None):
+        list = self.write_to_list()
+
+        try:
+            listner = tf.TransformListener(True, rospy.Duration(40.0))
+            listner.waitForTransform("base_link", self.base_link, rospy.Time(0), rospy.Duration(0.5))
+            (trans, quat) = listner.lookupTransform("base_link", self.base_link,rospy.Time(0))
+            angle = tf.transformations.euler_from_quaternion(quat)
+
+        except Exception as e:
+            print('Exception tracking_frame_: ' + str(e))
+
+        root_trans_mat = tf.transformations.compose_matrix(angles=angle, translate=trans)
+        print root_trans_mat
+
+        fk = root_trans_mat
+        #print fk
+        for i in range(0, len(list)):
+            if list[i][1] == 'revolute':
+                rospy.loginfo("revolute")
+                print list[i][2]
+                rot = self.create_rotation_matrix(q[i])
+                #print rot
+                #print np.dot(fk, rot)
+                #print
+                fk = np.dot(fk, list[i][2])
+                fk2 = np.dot(fk, rot)
+                #fk = self.mult_matrix( self.mult_matrix(fk, rot))
+                #fk1 =  self.mult_matrix(fk, list[i][2])
+                #print "type of joint: ",list[i][0]
+                #rospy.loginfo("...")
+                print fk2
+                #rospy.loginfo("")
+
+            elif list[i][1] == 'fixed':
+                rospy.loginfo("fixed")
+
+            elif list[i][1] == 'prismatic':
+                rospy.loginfo("prismatic")
+
+    def mult_matrix(self, A, B):
+        result_mat = np.zeros(shape=(4,4))
+        m = 4; n = 4
+
+        for i in range(0, m):
+            for j in range(0, n):
+                for k in range(0,n):
+                    result_mat[i, j] += A[i,k] * B[k,j]
+
+        return result_mat
+
+    # @return rotation matrix of given angle and axis of rotation is z
+    def create_rotation_matrix(self, angle):
+        rot_mat = np.eye(4, 4)
+        #angle = angle * pi / 180  # convert deg to rad
+        cos = np.cos(angle)
+        sin = np.sin(angle)
+
+        rot_mat[0, 0] = cos; rot_mat[0, 1] = -sin; rot_mat[0, 2] = 0; rot_mat[0, 3] = 0;
+        rot_mat[1, 0] = sin; rot_mat[1, 1] = cos;  rot_mat[1, 2] = 0; rot_mat[1, 3] = 0;
+        rot_mat[2, 0] = 0;   rot_mat[2, 1] = 0;    rot_mat[2, 2] = 1; rot_mat[2, 3] = 0;
+        rot_mat[3, 0] = 0;   rot_mat[3, 1] = 0;    rot_mat[3, 2] = 0; rot_mat[3, 3] = 1;
+        return rot_mat
+
+    ##
+    # @param Name of joint of which transformation needed
+    # @return 4x4 homogeneous transformation
+    def create_homo_matrix(self, joint_name):
+        joint_names = self.urdf.get_chain(self.base_link, self.end_link, links=False, fixed=False)
+        for it in joint_names:
+            joint = self.urdf.joint_map[it]
+            if joint.name == joint_name:
+                angle = joint.origin.rpy
+                pose = joint.origin.xyz
+                continue
+        homo_matrix = tf.transformations.compose_matrix(angles=angle, translate=pose)
+
+        return homo_matrix
+
+    ##
+    # Write in the list form
+    def write_to_list(self):
+        list_fk = []
+        trans_wrt_origin = np.identity(4)
+
+        for i, it in enumerate(self.get_joint_names()):
+            trans = self.create_homo_matrix(it)
+            trans_wrt_origin = np.dot(trans_wrt_origin, trans)
+            list_fk.append((it, self.joint_types[i], trans, trans_wrt_origin))
+            #print trans_wrt_origin
+        return list_fk
+
     def _do_kdl_fk(self, q, link_number):
         endeffec_frame = kdl.Frame()
         kinematics_status = self._fk_kdl.JntToCart(joint_list_to_kdl(q),
@@ -334,7 +428,7 @@ if __name__ == "__main__":
         robot = Robot.from_parameter_server()
         kdl_kin = KDLKinematics(robot, "arm_base_link", "arm_wrist_3_link")
         #q = kdl_kin.random_joint_angles()
-        q = [0., 0., 0., 0., 0., 0.]
+        q = [0,0, 0.0, -1.17, -0.50, 0.00, 0.00]
 
         #print kdl_kin.forward(q, "arm_wrist_3_link", "arm_base_link")   # arm_wrist_3_joint
         #print kdl_kin.forward(q, "arm_wrist_2_link", "arm_base_link")  # arm_wrist_2_joint
@@ -342,12 +436,13 @@ if __name__ == "__main__":
         #print kdl_kin.forward(q, "arm_forearm_link", "arm_base_link")  # arm_ee_joint
         #print kdl_kin.forward(q, "arm_upper_arm_link", "arm_base_link")    # arm_lift_joint
         #print kdl_kin.forward(q, "arm_shoulder_link", "arm_base_link")  # arm_pan_joint
-
-        pose = kdl_kin.forward(q)
-        print pose
+        kdl_kin.forward2(q)
+        #pose = kdl_kin.forward(q)
+        #print pose
         #print kdl_kin.jacobian(q, pose[:3,3])
         #pose1 = kdl_kin.jacobian(q)
        # print pose1
+        #print kdl_kin.inertia(q)
 
     else:
         rospy.logerr("Try to again connect ROS")
