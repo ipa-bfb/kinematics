@@ -231,13 +231,12 @@ class KDLKinematics(object):
                 #print "type of joint: ",list[i][0]
                 #rospy.loginfo("...")
                 #rospy.loginfo("")
-                self.tf_list.append([list[i],fk])
+                self.tf_list.append((list[i][0],list[i][1],list[i][2],list[i][3],fk))
             elif list[i][1] == 'fixed':
                 rospy.loginfo("fixed")
 
             elif list[i][1] == 'prismatic':
                 rospy.loginfo("prismatic")
-        print self.tf_list
     def mult_matrix(self, A, B):
         result_mat = np.zeros(shape=(4,4))
         m = 4; n = 4
@@ -412,7 +411,7 @@ class KDLKinematics(object):
 
     def compute_jacobian(self, q):
         print 'list size' + str(self.num_joints)
-        for i in range(0,1,self.num_joints):
+        for i in range(0,self.num_joints):
             if i is not 0:
 
                 if self.tf_list[i][1] is 'fixed':
@@ -421,9 +420,9 @@ class KDLKinematics(object):
                     # rospy.loginfo("Type of joint is revolute")
                     z_i = np.squeeze(np.asarray(self.tf_list[i][2][:3, 2]))
                     o_i = np.squeeze(np.asarray(self.tf_list[i][2][:3, 3]))
-                    o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints][4][:3, 3]))
+                    o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints-1][4][:3, 3]))
                     print "child: ", self.tf_list[i][0]
-                    print "joint_end_child: ", self.tf_list[self.num_joints][0]
+                    print "joint_end_child: ", self.tf_list[self.num_joints-1][0]
                     print "joint_start_parent: ", self.tf_list[i-1][0]
                     print o_i
                     print "z_i: ", z_i
@@ -432,10 +431,11 @@ class KDLKinematics(object):
                     rospy.loginfo("Type of joint is other")
             else:
                 print i
+                print self.tf_list[i][2]
                 z0 = [0.0, 0.0, 1.0]
                 # z0 = np.squeeze(np.asarray( self.forward_kinematics(q, joint.child, joint.parent)[:3,2]))
                 o_i = np.squeeze(np.asarray(self.tf_list[i][2][:3, 3]))
-                o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints][4][:3, 3]))
+                o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints-1][4][:3, 3]))
                 print z0
                 print o_n
                 print o_i
@@ -474,6 +474,7 @@ if __name__ == "__main__":
         #q = kdl_kin.random_joint_angles()
         q = [0, 0.0, -1.17, -0.5, 0.00, 0.00]
         kdl_kin.forward2(q)
+        print kdl_kin.tf_list
         kdl_kin.compute_jacobian(q)
         #print kdl_kin.forward(q, "arm_wrist_3_link", "arm_base_link")   # arm_wrist_3_joint
         #print kdl_kin.forward(q, "arm_wrist_2_link", "arm_base_link")  # arm_wrist_2_joint
