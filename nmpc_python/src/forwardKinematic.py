@@ -202,52 +202,6 @@ class KinematicChain(object):
             print np.cross(z, diff)
 #            print lin_jacobi
 
-
-    def compute_jacobian(self, q):
-        joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
-        list_fk = []
-        end_joint_name = joint_names[self.num_joints_-1]    # get child link name of end_link
-        joint_end = self.urdf_model_.joint_map[end_joint_name]
-        joint_start = self.urdf_model_.joint_map[joint_names[0]]
-        i = 0
-
-        for it in joint_names:
-            joint = self.urdf_model_.joint_map[it]
-
-            if i is not 0:
-
-                #if joint.type is 'fixed':
-                #    rospy.loginfo("Type of joint is fixed")
-                #    continue
-
-                #elif joint.type is 'revolute':
-                #rospy.loginfo("Type of joint is revolute")
-                z_i = np.squeeze(np.asarray( self.forward_kinematics(q, joint.child, joint_start.parent)[:3,2]))
-                o_i = np.squeeze(np.asarray(self.forward_kinematics(q, joint.child, joint_start.parent)[:3, 3]))
-                o_n = np.squeeze(np.asarray( self.forward_kinematics(q, joint_end.child, joint_start.parent)[:3, 3] ))
-                print "child: ", joint.child
-                print "joint_end_child: ", joint_end.child
-                print "joint_start_parent: ", joint_start.parent
-                print o_i
-                print "z_i: ", z_i
-                print "diff: ",np.cross(z_i, o_n-o_i)
-
-                #else:
-                #    rospy.loginfo("Type of joint is other")
-
-            else:
-                z0 = [0.0, 0.0, 1.0]
-                #z0 = np.squeeze(np.asarray( self.forward_kinematics(q, joint.child, joint.parent)[:3,2]))
-                o_i = np.squeeze(np.asarray(self.forward_kinematics(q, joint.child, joint_start.parent)[:3, 3]))
-                o_n = np.squeeze(np.asarray(self.forward_kinematics(q, joint_end.child, joint_start.parent)[:3, 3]))
-                print z0
-                print o_n
-                print o_i
-                print o_n - o_i
-                print "diff0: ", np.cross(z0, o_n - o_i)
-
-            i = i + 1
-
     def jacobi(self, q, pose=None):
         joint_names = self.urdf_model_.get_chain(self.base_link_, self.end_link_, links=False, fixed=False)
         joint_end = self.urdf_model_.joint_map[joint_names[self.num_joints_-1]] # get child link name of end_link

@@ -410,6 +410,38 @@ class KDLKinematics(object):
                     diff[i] = diff_alt[i]
         return diff
 
+    def compute_jacobian(self, q):
+        print 'list size' + str(self.num_joints)
+        for i in range(0,1,self.num_joints):
+            if i is not 0:
+
+                if self.tf_list[i][1] is 'fixed':
+                    rospy.loginfo("Type of joint is fixed")
+                elif self.tf_list[i][1] is 'revolute':
+                    # rospy.loginfo("Type of joint is revolute")
+                    z_i = np.squeeze(np.asarray(self.tf_list[i][2][:3, 2]))
+                    o_i = np.squeeze(np.asarray(self.tf_list[i][2][:3, 3]))
+                    o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints][4][:3, 3]))
+                    print "child: ", self.tf_list[i][0]
+                    print "joint_end_child: ", self.tf_list[self.num_joints][0]
+                    print "joint_start_parent: ", self.tf_list[i-1][0]
+                    print o_i
+                    print "z_i: ", z_i
+                    print "diff: ", np.cross(z_i, o_n - o_i)
+                else:
+                    rospy.loginfo("Type of joint is other")
+            else:
+                print i
+                z0 = [0.0, 0.0, 1.0]
+                # z0 = np.squeeze(np.asarray( self.forward_kinematics(q, joint.child, joint.parent)[:3,2]))
+                o_i = np.squeeze(np.asarray(self.tf_list[i][2][:3, 3]))
+                o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints][4][:3, 3]))
+                print z0
+                print o_n
+                print o_i
+                print o_n - o_i
+                print "diff0: ", np.cross(z0, o_n - o_i)
+
 def kdl_to_mat(m):
     mat =  np.mat(np.zeros((m.rows(), m.columns())))
     for i in range(m.rows()):
@@ -432,7 +464,6 @@ def joint_list_to_kdl(q):
         q_kdl[i] = q_i
     return q_kdl
 
-
 if __name__ == "__main__":
 
     rospy.init_node("kdl_kinematics")
@@ -442,14 +473,15 @@ if __name__ == "__main__":
         kdl_kin = KDLKinematics(robot, "arm_base_link", "arm_wrist_3_link")
         #q = kdl_kin.random_joint_angles()
         q = [0, 0.0, -1.17, -0.5, 0.00, 0.00]
-
+        kdl_kin.forward2(q)
+        kdl_kin.compute_jacobian(q)
         #print kdl_kin.forward(q, "arm_wrist_3_link", "arm_base_link")   # arm_wrist_3_joint
         #print kdl_kin.forward(q, "arm_wrist_2_link", "arm_base_link")  # arm_wrist_2_joint
         #print kdl_kin.forward(q, "arm_wrist_1_link", "arm_base_link")  # arm_wrist_1_link
         #print kdl_kin.forward(q, "arm_forearm_link", "arm_base_link")  # arm_ee_joint
         #print kdl_kin.forward(q, "arm_upper_arm_link", "arm_base_link")    # arm_lift_joint
         #print kdl_kin.forward(q, "arm_shoulder_link", "arm_base_link")  # arm_pan_joint
-        kdl_kin.forward2(q)
+
 
         #pose = kdl_kin.forward(q)
         #print pose
