@@ -1,4 +1,33 @@
 #!/usr/bin/env python
+#
+# Provides wrappers for PyKDL kinematics.
+#
+# Copyright (c) 2012, Georgia Tech Research Corporation
+# All rights reserved.
+#
+# Redistribution and use in source and binary forms, with or without
+# modification, are permitted provided that the following conditions are met:
+#     * Redistributions of source code must retain the above copyright
+#       notice, this list of conditions and the following disclaimer.
+#     * Redistributions in binary form must reproduce the above copyright
+#       notice, this list of conditions and the following disclaimer in the
+#       documentation and/or other materials provided with the distribution.
+#     * Neither the name of the Georgia Tech Research Corporation nor the
+#       names of its contributors may be used to endorse or promote products
+#       derived from this software without specific prior written permission.
+#
+# THIS SOFTWARE IS PROVIDED BY GEORGIA TECH RESEARCH CORPORATION ''AS IS'' AND
+# ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+# WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+# DISCLAIMED. IN NO EVENT SHALL GEORGIA TECH BE LIABLE FOR ANY DIRECT, INDIRECT,
+# INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+# LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA,
+# OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF
+# LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE
+# OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF
+# ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+#
+# Author: Kelsey Hawkins
 
 import numpy as np
 
@@ -8,9 +37,7 @@ import rospy
 from sensor_msgs.msg import JointState
 from kdl_parser_py.urdf import treeFromUrdfModel
 from urdf_parser_py.urdf import Robot
-import tf
-
-pi = 3.1415
+import tf.transformations
 
 def create_kdl_kin(base_link, end_link, urdf_filename=None, description_param="/robot_description"):
     if urdf_filename is None:
@@ -20,7 +47,6 @@ def create_kdl_kin(base_link, end_link, urdf_filename=None, description_param="/
         robot = Robot.from_xml_string(f.read())
         f.close()
     return KDLKinematics(robot, base_link, end_link)
-
 
 ##
 # Provides wrappers for performing KDL functions on a designated kinematic
@@ -45,11 +71,9 @@ class KDLKinematics(object):
         self.tree = kdl_tree
         self.urdf = urdf
 
-
         base_link = base_link.split("/")[-1] # for dealing with tf convention
         end_link = end_link.split("/")[-1] # for dealing with tf convention
         self.chain = kdl_tree.getChain(base_link, end_link)
-
         self.base_link = base_link
         self.end_link = end_link
 
@@ -59,12 +83,8 @@ class KDLKinematics(object):
         self.joint_safety_lower = []
         self.joint_safety_upper = []
         self.joint_types = []
-        self.joint_states = [0., 0., 0., 0., 0., 0.]
-        rospy.Subscriber("/arm/joint_states", JointState, self.jointStateCallback)
-
         for jnt_name in self.get_joint_names():
             jnt = urdf.joint_map[jnt_name]
-
             if jnt.limit is not None:
                 self.joint_limits_lower.append(jnt.limit.lower)
                 self.joint_limits_upper.append(jnt.limit.upper)
@@ -80,8 +100,7 @@ class KDLKinematics(object):
             else:
                 self.joint_safety_lower.append(None)
                 self.joint_safety_upper.append(None)
-            self.joint_types.append((jnt.type , jnt.axis))
-
+            self.joint_types.append(jnt.type)
         def replace_none(x, v):
             if x is None:
                 return v
@@ -94,7 +113,7 @@ class KDLKinematics(object):
                                             for jl in self.joint_safety_lower])
         self.joint_safety_upper = np.array([replace_none(jl, np.inf)
                                             for jl in self.joint_safety_upper])
-        self.joint_types = self.joint_types
+        self.joint_types = np.array(self.joint_types)
         self.num_joints = len(self.get_joint_names())
 
         self._fk_kdl = kdl.ChainFkSolverPos_recursive(self.chain)
@@ -145,7 +164,7 @@ class KDLKinematics(object):
         else:
             end_link = None
         homo_mat = self.forward(q, end_link)
-        pos = tf.transformations.translation_from_matrix(q)
+        pos = tf.transformations.translation_from_matrix(homo_mat)
         quat = tf.transformations.quaternion_from_matrix(homo_mat)
         euler = tf.transformations.euler_from_matrix(homo_mat)
         return pos, quat, euler
@@ -162,7 +181,6 @@ class KDLKinematics(object):
         link_names = self.get_link_names()
         if end_link is None:
             end_link = self.chain.getNrOfSegments()
-            print end_link
         else:
             end_link = end_link.split("/")[-1]
             if end_link in link_names:
@@ -180,116 +198,12 @@ class KDLKinematics(object):
                 print "Base segment %s not in KDL chain" % base_link
                 return None
         base_trans = self._do_kdl_fk(q, base_link)
-
         if base_trans is None:
             print "FK KDL failure on base transformation."
         end_trans = self._do_kdl_fk(q, end_link)
         if end_trans is None:
             print "FK KDL failure on end transformation."
         return base_trans**-1 * end_trans
-
-    def forward2(self, q, end_link=None, base_link=None):
-        list = self.write_to_list()
-        print 'forward 2'
-        try:
-            listner = tf.TransformListener(True, rospy.Duration(40.0))
-            listner.waitForTransform("base_link", self.base_link, rospy.Time(0), rospy.Duration(0.1))
-            (trans, quat) = listner.lookupTransform("base_link", self.base_link,rospy.Time(0))
-            angle = tf.transformations.euler_from_quaternion(quat)
-            print(angle)
-            print(quat)
-        except Exception as e:
-            print('Exception tracking_frame_: ' + str(e))
-
-        root_trans_mat = tf.transformations.compose_matrix(angles=angle, translate=trans)
-        print root_trans_mat
-
-        fk = root_trans_mat
-        #print fk
-        for i in range(0, len(list)):
-            if list[i][1] == 'revolute':
-                #rospy.loginfo("revolute")
-                rot = self.create_rotation_matrix(q[i],list[i][4])
-                #print rot
-                #print np.dot(fk, rot)
-                #print
-                #print list[i][0]
-                #print 'joint displacement'
-                #print list[i][2]
-                fk = np.dot(fk, list[i][2])
-                #print 'joint position'
-                #print fk
-                fk = np.dot(fk, rot)
-                #print 'rotation'
-                #print rot
-                #print 'result'
-                #print fk
-
-                #fk = self.mult_matrix( self.mult_matrix(fk, rot))
-                #fk1 =  self.mult_matrix(fk, list[i][2])
-                #print "type of joint: ",list[i][0]
-                #rospy.loginfo("...")
-                #rospy.loginfo("")
-            elif list[i][1] == 'fixed':
-                rospy.loginfo("fixed")
-
-            elif list[i][1] == 'prismatic':
-                rospy.loginfo("prismatic")
-
-    def mult_matrix(self, A, B):
-        result_mat = np.zeros(shape=(4,4))
-        m = 4; n = 4
-
-        for i in range(0, m):
-            for j in range(0, n):
-                for k in range(0,n):
-                    result_mat[i, j] += A[i,k] * B[k,j]
-
-        return result_mat
-
-    # @return rotation matrix of given angle and axis of rotation is z
-    def create_rotation_matrix(self, angle,axis):
-        rot_mat = np.eye(4, 4)
-        #angle = angle * pi / 180  # convert deg to rad
-        cos = np.cos(angle)
-        sin = np.sin(angle)
-
-        if axis == [1,0,0]:
-            rot_mat = tf.transformations.compose_matrix(angles=[angle,0,0], translate=[0,0,0])
-        elif axis == [0,1,0]:
-            rot_mat = tf.transformations.compose_matrix(angles=[0,angle, 0], translate=[0, 0, 0])
-        elif axis == [0, 0, 1]:
-            rot_mat = tf.transformations.compose_matrix(angles=[0, 0,angle], translate=[0, 0, 0])
-
-        return rot_mat
-
-    ##
-    # @param Name of joint of which transformation needed
-    # @return 4x4 homogeneous transformation
-    def create_homo_matrix(self, joint_name):
-        joint_names = self.urdf.get_chain(self.base_link, self.end_link, links=False, fixed=False)
-        for it in joint_names:
-            joint = self.urdf.joint_map[it]
-            if joint.name == joint_name:
-                angle = joint.origin.rpy
-                pose = joint.origin.xyz
-                continue
-        homo_matrix = tf.transformations.compose_matrix(angles=angle, translate=pose)
-
-        return homo_matrix
-
-    ##
-    # Write in the list form
-    def write_to_list(self):
-        list_fk = []
-        trans_wrt_origin = np.identity(4)
-
-        for i, it in enumerate(self.get_joint_names()):
-            trans = self.create_homo_matrix(it)
-            trans_wrt_origin = np.dot(trans_wrt_origin, trans)
-            list_fk.append((it, self.joint_types[i][0], trans, trans_wrt_origin,self.joint_types[i][1]))
-            #print trans_wrt_origin
-        return list_fk
 
     def _do_kdl_fk(self, q, link_number):
         endeffec_frame = kdl.Frame()
@@ -306,6 +220,60 @@ class KDLKinematics(object):
         else:
             return None
 
+    ##
+    # Inverse kinematics for a given pose, returning the joint angles required
+    # to obtain the target pose.
+    # @param pose Pose-like object represeting the target pose of the end effector.
+    # @param q_guess List of joint angles to seed the IK search.
+    # @param min_joints List of joint angles to lower bound the angles on the IK search.
+    #                   If None, the safety limits are used.
+    # @param max_joints List of joint angles to upper bound the angles on the IK search.
+    #                   If None, the safety limits are used.
+    # @return np.array of joint angles needed to reach the pose or None if no solution was found.
+    def inverse(self, pose, q_guess=None, min_joints=None, max_joints=None):
+        pos, rot = PoseConv.to_pos_rot(pose)
+        pos_kdl = kdl.Vector(pos[0,0], pos[1,0], pos[2,0])
+        rot_kdl = kdl.Rotation(rot[0,0], rot[0,1], rot[0,2],
+                               rot[1,0], rot[1,1], rot[1,2],
+                               rot[2,0], rot[2,1], rot[2,2])
+        frame_kdl = kdl.Frame(rot_kdl, pos_kdl)
+        if min_joints is None:
+            min_joints = self.joint_safety_lower
+        if max_joints is None:
+            max_joints = self.joint_safety_upper
+        mins_kdl = joint_list_to_kdl(min_joints)
+        maxs_kdl = joint_list_to_kdl(max_joints)
+        ik_p_kdl = kdl.ChainIkSolverPos_NR_JL(self.chain, mins_kdl, maxs_kdl,
+                                              self._fk_kdl, self._ik_v_kdl)
+
+        if q_guess == None:
+            # use the midpoint of the joint limits as the guess
+            lower_lim = np.where(np.isfinite(min_joints), min_joints, 0.)
+            upper_lim = np.where(np.isfinite(max_joints), max_joints, 0.)
+            q_guess = (lower_lim + upper_lim) / 2.0
+            q_guess = np.where(np.isnan(q_guess), [0.]*len(q_guess), q_guess)
+
+        q_kdl = kdl.JntArray(self.num_joints)
+        q_guess_kdl = joint_list_to_kdl(q_guess)
+        if ik_p_kdl.CartToJnt(q_guess_kdl, frame_kdl, q_kdl) >= 0:
+            return np.array(joint_kdl_to_list(q_kdl))
+        else:
+            return None
+
+    ##
+    # Repeats IK for different sets of random initial angles until a solution is found
+    # or the call times out.
+    # @param pose Pose-like object represeting the target pose of the end effector.
+    # @param timeout Time in seconds to look for a solution.
+    # @return np.array of joint angles needed to reach the pose or None if no solution was found.
+    def inverse_search(self, pose, timeout=1.):
+        st_time = rospy.get_time()
+        while not rospy.is_shutdown() and rospy.get_time() - st_time < timeout:
+            q_init = self.random_joint_angles()
+            q_ik = self.inverse(pose, q_init)
+            if q_ik is not None:
+                return q_ik
+        return None
 
     ##
     # Returns the Jacobian matrix at the end_link for the given joint angles.
@@ -317,7 +285,6 @@ class KDLKinematics(object):
         j_kdl = kdl.Jacobian(self.num_joints)
         q_kdl = joint_list_to_kdl(q)
         self._jac_kdl.JntToJac(q_kdl, j_kdl)
-        print j_kdl
         if pos is not None:
             ee_pos = self.forward(q)[:3,3]
             pos_kdl = kdl.Vector(pos[0]-ee_pos[0], pos[1]-ee_pos[1],
@@ -371,16 +338,6 @@ class KDLKinematics(object):
         return np.clip(q, lower_lim, upper_lim)
 
     ##
-    # @return get joint angles
-    def get_joint_angle(self):
-        return self.joint_states
-
-    # receives the joint states
-    def jointStateCallback(self, msg):
-        for i in range(0, len(msg.position)):
-            self.joint_states[i] = msg.position[i]
-
-    ##
     # Returns a set of random joint angles distributed uniformly in the safety limits.
     # @return np.array list of random joint angles.
     def random_joint_angles(self):
@@ -401,13 +358,58 @@ class KDLKinematics(object):
         diff = np.array(q1) - np.array(q2)
         diff_mod = np.mod(diff, 2 * np.pi)
         diff_alt = diff_mod - 2 * np.pi
-        for i, continuous in enumerate(self.joint_types[i][0] == 'continuous'):
+        for i, continuous in enumerate(self.joint_types == 'continuous'):
             if continuous:
                 if diff_mod[i] < -diff_alt[i]:
                     diff[i] = diff_mod[i]
                 else:
                     diff[i] = diff_alt[i]
         return diff
+
+    ##
+    # Performs an IK search while trying to balance the demands of reaching the goal,
+    # maintaining a posture, and prioritizing rotation or position.
+    def inverse_biased(self, pose, q_init, q_bias, q_bias_weights, rot_weight=1.,
+                       bias_vel=0.01, num_iter=100):
+        # This code is potentially volatile
+        q_out = np.mat(self.inverse_search(pose)).T
+        for i in range(num_iter):
+            pos_fk, rot_fk = PoseConv.to_pos_rot(self.forward(q_out))
+            delta_twist = np.mat(np.zeros((6, 1)))
+            pos_delta = pos - pos_fk
+            delta_twist[:3,0] = pos_delta
+            rot_delta = np.mat(np.eye(4))
+            rot_delta[:3,:3] = rot * rot_fk.T
+            rot_delta_angles = np.mat(trans.euler_from_matrix(rot_delta)).T
+            delta_twist[3:6,0] = rot_delta_angles
+            J = self.jacobian(q_out)
+            J[3:6,:] *= np.sqrt(rot_weight)
+            delta_twist[3:6,0] *= np.sqrt(rot_weight)
+            J_tinv = np.linalg.inv(J.T * J + np.diag(q_bias_weights) * np.eye(len(q_init))) * J.T
+            q_bias_diff = q_bias - q_out
+            q_bias_diff_normed = q_bias_diff * bias_vel / np.linalg.norm(q_bias_diff)
+            delta_q = q_bias_diff_normed + J_tinv * (delta_twist - J * q_bias_diff_normed)
+            q_out += delta_q
+            q_out = np.mat(self.clip_joints_safe(q_out.T.A[0])).T
+        return q_out
+
+    ##
+    # inverse_biased with random restarts.
+    def inverse_biased_search(self, pos, rot, q_bias, q_bias_weights, rot_weight=1.,
+                              bias_vel=0.01, num_iter=100, num_search=20):
+        # This code is potentially volatile
+        q_sol_min = []
+        min_val = 1000000.
+        for i in range(num_search):
+            q_init = self.random_joint_angles()
+            q_sol = self.inverse_biased(pos, rot, q_init, q_bias, q_bias_weights, rot_weight=1.,
+                                        bias_vel=bias_vel, num_iter=num_iter)
+            cur_val = np.linalg.norm(np.diag(q_bias_weights) * (q_sol - q_bias))
+            if cur_val < min_val:
+                min_val = cur_val
+                q_sol_min = q_sol
+        return q_sol_min
+
 
 def kdl_to_mat(m):
     mat =  np.mat(np.zeros((m.rows(), m.columns())))
@@ -431,31 +433,71 @@ def joint_list_to_kdl(q):
         q_kdl[i] = q_i
     return q_kdl
 
+def main():
+    import sys
+    def usage():
+        print("Tests for kdl_parser:\n")
+        print("kdl_parser <urdf file>")
+        print("\tLoad the URDF from file.")
+        print("kdl_parser")
+        print("\tLoad the URDF from the parameter server.")
+        sys.exit(1)
+
+    if len(sys.argv) > 2:
+        usage()
+    if len(sys.argv) == 2 and (sys.argv[1] == "-h" or sys.argv[1] == "--help"):
+        usage()
+    if (len(sys.argv) == 1):
+        robot = Robot.from_parameter_server()
+    else:
+        f = file(sys.argv[1], 'r')
+        robot = Robot.from_xml_string(f.read())
+        f.close()
+
+    if True:
+        import random
+        base_link = robot.get_root()
+        end_link = robot.link_map.keys()[random.randint(0, len(robot.link_map)-1)]
+        print "Root link: %s; Random end link: %s" % (base_link, end_link)
+        kdl_kin = KDLKinematics(robot, base_link, end_link)
+        q = kdl_kin.random_joint_angles()
+        print "Random angles:", q
+        pose = kdl_kin.forward(q)
+        print "FK:", pose
+        q_new = kdl_kin.inverse(pose)
+        print "IK (not necessarily the same):", q_new
+        if q_new is not None:
+            pose_new = kdl_kin.forward(q_new)
+            print "FK on IK:", pose_new
+            print "Error:", np.linalg.norm(pose_new * pose**-1 - np.mat(np.eye(4)))
+        else:
+            print "IK failure"
+        J = kdl_kin.jacobian(q)
+        print "Jacobian:", J
+        M = kdl_kin.inertia(q)
+        print "Inertia matrix:", M
+        if False:
+            M_cart = kdl_kin.cart_inertia(q)
+            print "Cartesian inertia matrix:", M_cart
+
+    if True:
+        rospy.init_node("kdl_kinematics")
+        num_times = 20
+        while not rospy.is_shutdown() and num_times > 0:
+            base_link = robot.get_root()
+            end_link = robot.link_map.keys()[random.randint(0, len(robot.link_map)-1)]
+            print "Root link: %s; Random end link: %s" % (base_link, end_link)
+            kdl_kin = KDLKinematics(robot, base_link, end_link)
+            q = kdl_kin.random_joint_angles()
+            pose = kdl_kin.forward(q)
+            q_guess = kdl_kin.random_joint_angles()
+            q_new = kdl_kin.inverse(pose, q_guess)
+            if q_new is None:
+                print "Bad IK, trying search..."
+                q_search = kdl_kin.inverse_search(pose)
+                pose_search = kdl_kin.forward(q_search)
+                print "Result error:", np.linalg.norm(pose_search * pose**-1 - np.mat(np.eye(4)))
+            num_times -= 1
 
 if __name__ == "__main__":
-
-    rospy.init_node("kdl_kinematics")
-    if not rospy.is_shutdown():
-        create_kdl_kin("arm_base_link", "arm_wrist_3_link")
-        robot = Robot.from_parameter_server()
-        kdl_kin = KDLKinematics(robot, "arm_base_link", "arm_wrist_3_link")
-        #q = kdl_kin.random_joint_angles()
-        q = [0, 0.0, -1.17, -0.5, 0.00, 0.00]
-
-        #print kdl_kin.forward(q, "arm_wrist_3_link", "arm_base_link")   # arm_wrist_3_joint
-        #print kdl_kin.forward(q, "arm_wrist_2_link", "arm_base_link")  # arm_wrist_2_joint
-        #print kdl_kin.forward(q, "arm_wrist_1_link", "arm_base_link")  # arm_wrist_1_link
-        #print kdl_kin.forward(q, "arm_forearm_link", "arm_base_link")  # arm_ee_joint
-        #print kdl_kin.forward(q, "arm_upper_arm_link", "arm_base_link")    # arm_lift_joint
-        #print kdl_kin.forward(q, "arm_shoulder_link", "arm_base_link")  # arm_pan_joint
-        kdl_kin.forward2(q)
-        #pose = kdl_kin.forward(q)
-        #print pose
-        #print kdl_kin.jacobian(q, pose[:3,3])
-        #pose1 = kdl_kin.jacobian(q)
-       # print pose1
-        #print kdl_kin.inertia(q)
-
-    else:
-        rospy.logerr("Try to again connect ROS")
-
+    main()
