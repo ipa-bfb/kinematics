@@ -60,6 +60,7 @@ class KDLKinematics(object):
         self.joint_safety_upper = []
         self.joint_types = []
         self.joint_states = [0., 0., 0., 0., 0., 0.]
+        self.tf_list = []
         rospy.Subscriber("/arm/joint_states", JointState, self.jointStateCallback)
 
         for jnt_name in self.get_joint_names():
@@ -209,7 +210,7 @@ class KDLKinematics(object):
         for i in range(0, len(list)):
             if list[i][1] == 'revolute':
                 #rospy.loginfo("revolute")
-                rot = self.create_rotation_matrix(q[i],list[i][4])
+                rot = self.create_rotation_matrix(q[i],list[i][3])
                 #print rot
                 #print np.dot(fk, rot)
                 #print
@@ -230,12 +231,13 @@ class KDLKinematics(object):
                 #print "type of joint: ",list[i][0]
                 #rospy.loginfo("...")
                 #rospy.loginfo("")
+                self.tf_list.append([list[i],fk])
             elif list[i][1] == 'fixed':
                 rospy.loginfo("fixed")
 
             elif list[i][1] == 'prismatic':
                 rospy.loginfo("prismatic")
-
+        print self.tf_list
     def mult_matrix(self, A, B):
         result_mat = np.zeros(shape=(4,4))
         m = 4; n = 4
@@ -286,8 +288,7 @@ class KDLKinematics(object):
 
         for i, it in enumerate(self.get_joint_names()):
             trans = self.create_homo_matrix(it)
-            trans_wrt_origin = np.dot(trans_wrt_origin, trans)
-            list_fk.append((it, self.joint_types[i][0], trans, trans_wrt_origin,self.joint_types[i][1]))
+            list_fk.append((it, self.joint_types[i][0], trans,self.joint_types[i][1]))
             #print trans_wrt_origin
         return list_fk
 
@@ -449,6 +450,7 @@ if __name__ == "__main__":
         #print kdl_kin.forward(q, "arm_upper_arm_link", "arm_base_link")    # arm_lift_joint
         #print kdl_kin.forward(q, "arm_shoulder_link", "arm_base_link")  # arm_pan_joint
         kdl_kin.forward2(q)
+
         #pose = kdl_kin.forward(q)
         #print pose
         #print kdl_kin.jacobian(q, pose[:3,3])
