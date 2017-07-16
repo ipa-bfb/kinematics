@@ -413,16 +413,31 @@ class KDLKinematics(object):
                     rospy.loginfo("Type of joint is fixed")
                 elif self.tf_list[i][1] == 'revolute':
                     rospy.loginfo("Type of joint is revolute")
-                    z_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 2]))
-                    o_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 3]))
-                    o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints-1][4][:3, 3]))
-                    #print "child: ", self.tf_list[i][0]
-                    #print "joint_end_child: ", self.tf_list[self.num_joints-1][0]
-                    #print "joint_start_parent: ", self.tf_list[i-1][0]
-                    #print o_i
-                    #print "z_i: ", z_i
-                    print "Jvi: ", np.cross(z_i, o_n - o_i)
-                    Jvi= np.cross(z_i, o_n - o_i)
+                    axis = self.tf_list[i][3]
+                    if axis == [1, 0, 0]:
+                        z_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 0]))
+                        o_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 3]))
+                        o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints - 1][4][:3, 3]))
+                        # print "child: ", self.tf_list[i][0]
+                        # print "joint_end_child: ", self.tf_list[self.num_joints-1][0]
+                        # print "joint_start_parent: ", self.tf_list[i-1][0]
+                        # print o_i
+                        # print "z_i: ", z_i
+                        print "Jvi: ", np.cross(z_i, o_n - o_i)
+                        Jvi = np.cross(z_i, o_n - o_i)
+                    elif axis == [0, 1, 0]:
+                        z_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 1]))
+                        o_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 3]))
+                        o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints - 1][4][:3, 3]))
+                        print "Jvi: ", np.cross(z_i, o_n - o_i)
+                        Jvi = np.cross(z_i, o_n - o_i)
+                    elif axis == [0, 0, 1]:
+                        z_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 2]))
+                        o_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 3]))
+                        o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints - 1][4][:3, 3]))
+                        print "Jvi: ", np.cross(z_i, o_n - o_i)
+                        Jvi = np.cross(z_i, o_n - o_i)
+
                 else:
                     rospy.loginfo("Type of joint is other")
             else:
@@ -459,11 +474,11 @@ if __name__ == "__main__":
 
     rospy.init_node("kdl_kinematics")
     if not rospy.is_shutdown():
-        create_kdl_kin("arm_left_base_link", "arm_left_7_link")
+        create_kdl_kin("arm_base_link", "arm_wrist_3_link")
         robot = Robot.from_parameter_server()
-        kdl_kin = KDLKinematics(robot, "arm_left_base_link", "arm_left_7_link")
+        kdl_kin = KDLKinematics(robot, "arm_base_link", "arm_wrist_3_link")
         #q = kdl_kin.random_joint_angles()
-        q = [0, 0.0, -1.17, -0.5, 0.00, 0.00,0.0]
+        q = [0.0, 0, 0, 0.00, 0.00,0.0]
 
 
         #print kdl_kin.forward(q, "arm_wrist_3_link", "arm_base_link")   # arm_wrist_3_joint
@@ -476,7 +491,7 @@ if __name__ == "__main__":
 
         pose = kdl_kin.forward2(q)
         print pose
-        pose = kdl_kin.forward(q,"arm_left_base_link", "arm_left_7_link")
+        pose = kdl_kin.forward(q,"arm_base_link", "arm_wrist_3_link")
         print pose
         print kdl_kin.compute_jacobian(q)
         print kdl_kin.jacobian(q)
