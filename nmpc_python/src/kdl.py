@@ -10,6 +10,8 @@ from kdl_parser_py.urdf import treeFromUrdfModel
 from urdf_parser_py.urdf import Robot
 import tf
 
+from casadi import *
+
 pi = 3.1415
 
 def create_kdl_kin(base_link, end_link, urdf_filename=None, description_param="/robot_description"):
@@ -137,6 +139,10 @@ class KDLKinematics(object):
         return self.urdf.get_chain(self.base_link, self.end_link,
                                    links=links, fixed=fixed)
 
+    def get_number_joint(self, links=False, fixed=False):
+        return self.urdf.get_chain(self.base_link, self.end_link,
+                                   links=links, fixed=fixed).size()
+
     def get_joint_limits(self):
         return self.joint_limits_lower, self.joint_limits_upper
 
@@ -187,6 +193,18 @@ class KDLKinematics(object):
             print "FK KDL failure on end transformation."
         return base_trans * end_trans
 
+    def symbolic_fk(self, q, end_link=None, base_link=None):
+
+        fk = MX.eye()
+        #print fk
+        for i in range(0, len(list)):
+            if list[i][1] == 'revolute':
+                rot = self.create_rotation_matrix(q[i],list[i][3])
+                fk = np.dot(fk, list[i][2])
+                fk = np.dot(fk, rot)
+            elif list[i][1] == 'prismatic':
+                rospy.loginfo("prismatic")
+        return fk
 
     def forward2(self, q, end_link=None, base_link=None):
         list = self.write_to_list()
@@ -207,26 +225,8 @@ class KDLKinematics(object):
             if list[i][1] == 'revolute':
                 #rospy.loginfo("revolute")
                 rot = self.create_rotation_matrix(q[i],list[i][3])
-                #print rot
-                #print np.dot(fk, rot)
-                #print
-                #print list[i][0]
-                #print 'joint displacement'
-                #print list[i][2]
                 fk = np.dot(fk, list[i][2])
-                #print 'joint position'
-                #print fk
                 fk = np.dot(fk, rot)
-                #print 'rotation'
-                #print rot
-                #print 'result'
-                #print fk
-
-                #fk = self.mult_matrix( self.mult_matrix(fk, rot))
-                #fk1 =  self.mult_matrix(fk, list[i][2])
-                #print "type of joint: ",list[i][0]
-                #rospy.loginfo("...")
-                #rospy.loginfo("")
                 self.tf_list.append((list[i][0],list[i][1],list[i][2],list[i][3],fk))
             elif list[i][1] == 'prismatic':
                 rospy.loginfo("prismatic")
