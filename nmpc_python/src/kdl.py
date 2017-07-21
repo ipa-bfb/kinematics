@@ -405,7 +405,10 @@ class KDLKinematics(object):
         return diff
 
     def compute_jacobian(self, q):
+        #J = np.mat(np.zeros((6, self.num_joints)))
         J = []
+        Jvi = np.mat(np.zeros((3, 1)))
+        Jwi = np.mat(np.zeros((3, 1)))
         for i in range(0,self.num_joints):
             if i is not 0:
 
@@ -425,29 +428,37 @@ class KDLKinematics(object):
                         # print "z_i: ", z_i
                         print "Jvi: ", np.cross(z_i, o_n - o_i)
                         Jvi = np.cross(z_i, o_n - o_i)
+                        Jwi = z_i
+                        J = np.column_stack((J, np.hstack((Jvi, Jwi))))
                     elif axis == [0, 1, 0]:
                         z_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 1]))
                         o_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 3]))
                         o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints - 1][4][:3, 3]))
                         print "Jvi: ", np.cross(z_i, o_n - o_i)
                         Jvi = np.cross(z_i, o_n - o_i)
+                        Jwi = z_i
+                        J = np.column_stack((J, np.hstack((Jvi, Jwi))))
                     elif axis == [0, 0, 1]:
                         z_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 2]))
                         o_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 3]))
                         o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints - 1][4][:3, 3]))
                         print "Jvi: ", np.cross(z_i, o_n - o_i)
                         Jvi = np.cross(z_i, o_n - o_i)
-
+                        Jwi = z_i
+                        J = np.column_stack((J,np.hstack((Jvi, Jwi))))
                 else:
                     rospy.loginfo("Type of joint is other")
             else:
-                z0 = [0.0, 0.0, 1.0]
+                z0 = np.array([0.0, 0.0, 1.0])
                 # z0 = np.squeeze(np.asarray( self.forward_kinematics(q, joint.child, joint.parent)[:3,2]))
                 o_i = np.squeeze(np.asarray(self.tf_list[i][4][:3, 3]))
                 o_n = np.squeeze(np.asarray(self.tf_list[self.num_joints-1][4][:3, 3]))
-                print "diff0: ", np.cross(z0, o_n - o_i)
-                J.append([])
+                Jvi = np.cross(z0, o_n - o_i)
+                J=np.hstack((Jvi,z0))
+                print J
 
+        print 'Jacobian'
+        print J
 def kdl_to_mat(m):
     mat =  np.mat(np.zeros((m.rows(), m.columns())))
     for i in range(m.rows()):
